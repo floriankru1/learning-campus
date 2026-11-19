@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Learning Campus · Meine Kurse</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand" role="button" tabindex="0" data-action="catalog" aria-label="Zur Kursübersicht">
+        <span class="eyebrow">IN GOOD COMPANY · LERNPLATTFORM</span>
+        <strong>Learning Campus</strong>
+        <span class="tagline">Deine Kurse. Dein Tempo. Dein Lernfortschritt.</span>
+      </div>
+      <nav class="top-actions" aria-label="Hauptnavigation">
+        <button class="button ghost-light" data-action="catalog">Alle Kurse</button>
+        <button class="button light" data-action="create">+ Kurs mit KI erstellen</button>
+      </nav>
+    </div>
+  </header>
+  <main class="shell">
+    <aside id="sidebar" class="sidebar" aria-label="Kursnavigation"></aside>
+    <section id="content" class="content" aria-live="polite"></section>
+  </main>
+  <footer class="footer">Deine Web-App-Einträge bleiben im Browser. Auf diesem Mac zeigt die Tagesübersicht zusätzlich die bestätigten Zusammenfassungen aus ChatGPT.</footer>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <input id="course-file" type="file" accept=".json,application/json" hidden>
+  <input id="backup-file" type="file" accept=".json,application/json" hidden>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <!-- CAMPUS_CLOUD_SCRIPTS -->
+</body>
+</html>

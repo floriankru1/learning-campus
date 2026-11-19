@@ -1,0 +1,10 @@
+**
+!data.js
+!chatgpt-prototype/
+!chatgpt-prototype/package.json
+!chatgpt-prototype/pnpm-lock.yaml
+!chatgpt-prototype/server.mjs
+!chatgpt-prototype/supabase.mjs
+!chatgpt-prototype/notion.mjs
+!chatgpt-prototype/widget.html
+!chatgpt-prototype/start-cloud.sh

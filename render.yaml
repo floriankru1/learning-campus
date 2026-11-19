@@ -1,0 +1,25 @@
+services:
+  - type: worker
+    name: learning-campus
+    runtime: docker
+    plan: starter
+    numInstances: 1
+    disk:
+      name: campus-private
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: CAMPUS_SUPABASE_URL
+        sync: false
+      - key: CAMPUS_SUPABASE_SECRET
+        sync: false
+      - key: CAMPUS_USER_ID
+        sync: false
+      - key: CAMPUS_NOTION_DATA_SOURCE
+        sync: false
+      - key: CONTROL_PLANE_API_KEY
+        sync: false
+      - key: CONTROL_PLANE_TUNNEL_ID
+        sync: false
+      - key: CONTROL_PLANE_ORGANIZATION_ID
+        sync: false
