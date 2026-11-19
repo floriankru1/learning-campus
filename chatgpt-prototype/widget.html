@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Learning Campus</title>
+<style>
+  :root { color-scheme: light dark; font: 16px/1.5 system-ui, sans-serif; }
+  body { margin: 0; color: CanvasText; background: Canvas; }
+  main { padding: 18px; border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 16px; }
+  h1 { font-size: 1.35rem; margin: .2em 0; line-height: 1.25; }
+  h2 { font-size: 1.1rem; margin: 1.25em 0 .4em; }
+  p { margin: .45em 0; }
+  ul { padding-inline-start: 1.4em; }
+  button, textarea, input, select { font: inherit; }
+  select { width: 100%; min-width: 0; padding: .45em; border-radius: 8px; }
+  button { border: 0; border-radius: 8px; padding: .55em .9em; background: #21654f; color: white; cursor: pointer; }
+  button:disabled { opacity: .6; cursor: wait; }
+  label { display: grid; gap: 4px; margin-block: 10px; }
+  textarea, input { box-sizing: border-box; width: 100%; border-radius: 6px; padding: 6px 8px; }
+  details { margin-block: 8px; }
+  summary { cursor: pointer; font-weight: 600; }
+  .muted { color: color-mix(in srgb, CanvasText 75%, Canvas); }
+  #status:empty { display: none; }
+</style>
+
+<main>
+  <header>
+    <h1>Teamcoaching</h1>
+    <p id="progress" class="muted"></p>
+  </header>
+  <section id="catalog" hidden>
+    <label>Kursübersicht <select id="lesson-select"></select></label>
+    <button id="start-lesson" type="button">Lektion im Chat starten</button>
+  </section>
+  <h2 id="title"></h2>
+  <p id="focus"></p>
+  <p id="exercise"></p>
+  <details id="sources" hidden>
+    <summary>Quellen</summary>
+    <ul></ul>
+  </details>
+  <form id="draft" hidden>
+    <h2>Tageszusammenfassung prüfen</h2>
+    <label>Kernerkenntnisse (eine pro Zeile)
+      <textarea id="insights" rows="3" required></textarea>
+    </label>
+    <label>Offene Frage <input id="question" maxlength="500"></label>
+    <label>Nächster Praxisschritt <input id="next-step" maxlength="500" required></label>
+    <button type="submit">Lerntag abschließen</button>
+  </form>
+  <section>
+    <h2>Tagesübersicht dieser Lektion</h2>
+    <div id="entries"><p class="muted">Die Übersicht wird geladen.</p></div>
+  </section>
+  <p id="status" role="status"></p>
+</main>
+
+<script type="module">
+  const byId = id => document.getElementById(id);
+  const form = byId('draft');
+  const save = form.querySelector('button');
+  const pending = new Map();
+  const lessonSelect = byId('lesson-select');
+  const start = byId('start-lesson');
+  let draftLessonId;
+  let nextId = 0;
+
+  function send(message) {
+    window.parent.postMessage({ jsonrpc: '2.0', ...message }, '*');
+  }
+
+  function request(method, params, timeout = 15000) {
+    const id = ++nextId;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error('Zeitüberschreitung'));
+      }, timeout);
+      pending.set(id, { resolve, reject, timer });
+      send({ id, method, params });
+    });
+  }
+
+  function element(tag, text) {
+    const node = document.createElement(tag);
+    node.textContent = text;
+    return node;
+  }
+
+  const dateFormatter = new Intl.DateTimeFormat('de-DE', { dateStyle: 'long', timeZone: 'UTC' });
+  function renderCatalog(catalog, selected) {
+    if (!catalog?.length) return;
+    const groups = new Map();
+    for (const item of catalog) {
+      if (!groups.has(item.module)) {
+        const group = document.createElement('optgroup');
+        group.label = item.module;
+        groups.set(item.module, group);
+      }
+      const option = element('option', `${item.completed ? '✓ ' : ''}${item.id}. ${item.title}`);
+      option.value = item.id;
+      groups.get(item.module).append(option);
+    }
+    lessonSelect.replaceChildren(...groups.values());
+    lessonSelect.value = selected;
+    byId('catalog').hidden = false;
+    byId('progress').textContent = `${catalog.filter(item => item.completed).length} von ${catalog.length} Lektionen abgeschlossen`;
+  }
+
+  function render(result) {
+    const data = result?.structuredContent;
+    if (!data?.lesson) return;
+    renderCatalog(data.catalog, data.lesson.id);
+    byId('title').textContent = `Lektion ${data.lesson.id} · ${data.lesson.title}${data.completed ? ' ✓' : ''}`;
+    byId('focus').textContent = data.lesson.focus;
+    byId('exercise').textContent = data.lesson.exercise ?? '';
+
+    const sources = byId('sources');
+    sources.hidden = !data.lesson.sources.length;
+    sources.querySelector('ul').replaceChildren(...data.lesson.sources.map(source => {
+      const item = element('li', '');
+      const link = element('a', source.name);
+      link.href = source.url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      item.append(link, document.createTextNode(' · ' + source.note));
+      return item;
+    }));
+
+    const entries = data.entries.map(entry => {
+      const detail = document.createElement('details');
+      detail.append(element('summary', dateFormatter.format(new Date(entry.date + 'T00:00:00Z'))));
+      const insights = document.createElement('ul');
+      insights.append(...entry.insights.map(insight => element('li', insight)));
+      detail.append(insights);
+      if (entry.openQuestion) detail.append(element('p', 'Offene Frage · ' + entry.openQuestion));
+      detail.append(element('p', 'Nächster Praxisschritt · ' + entry.nextStep));
+      if (entry.notionStatus === 'saved' && entry.notionUrl?.startsWith('https://')) {
+        const link = element('a', 'In Notion gespeichert ↗');
+        link.href = entry.notionUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        detail.append(link);
+      }
+      if (entry.notionStatus === 'unconfirmed') {
+        detail.append(element('p', 'Lokal gespeichert. Prüfe im Lernjournal, ob Notion den Eintrag angelegt hat.'));
+      }
+      if (entry.notionStatus === 'failed') {
+        detail.append(element('p', 'Lokal gespeichert. Der Export nach Notion ist fehlgeschlagen.'));
+        const retry = element('button', 'Notion-Export erneut versuchen');
+        retry.type = 'button';
+        retry.addEventListener('click', async () => {
+          retry.disabled = true;
+          try {
+            const result = await request('tools/call', {
+              name: 'retry_notion_export', arguments: { date: entry.date, lessonId: data.lesson.id },
+            }, 60000);
+            if (result.isError) throw new Error();
+            render(result);
+          } catch {
+            byId('status').textContent = 'Der Exportstatus konnte nicht aktualisiert werden.';
+          } finally {
+            retry.disabled = false;
+          }
+        });
+        detail.append(retry);
+      }
+      return detail;
+    });
+    if (entries[0]) entries[0].open = true;
+    byId('entries').replaceChildren(...(entries.length ? entries : [element('p', 'Noch keine Zusammenfassung gespeichert.')]));
+
+    if (data.draft) {
+      draftLessonId = data.lesson.id;
+      byId('insights').value = data.draft.insights.join('\n');
+      byId('question').value = data.draft.openQuestion ?? '';
+      byId('next-step').value = data.draft.nextStep;
+      byId('status').textContent = '';
+      form.hidden = false;
+    }
+    send({ method: 'ui/notifications/size-changed', params: { height: document.documentElement.scrollHeight } });
+  }
+
+  window.addEventListener('message', event => {
+    if (event.source !== window.parent || event.data?.jsonrpc !== '2.0') return;
+    const { id, result, error, method, params } = event.data;
+    if (method === 'ui/notifications/tool-result') render(params);
+    const call = pending.get(id);
+    if (!call) return;
+    clearTimeout(call.timer);
+    pending.delete(id);
+    if (error) call.reject(error);
+    else call.resolve(result);
+  });
+
+  new ResizeObserver(() => {
+    send({ method: 'ui/notifications/size-changed', params: { height: document.documentElement.scrollHeight } });
+  }).observe(document.querySelector('main'));
+
+  start.addEventListener('click', async () => {
+    start.disabled = true;
+    const text = `Starte Teamcoaching-Lektion ${lessonSelect.value} mit Learning Campus. Lade genau diese Lektion und beginne den Lernchat.`;
+    try {
+      const result = await request('ui/message', { role: 'user', content: [{ type: 'text', text }] });
+      if (result?.isError) throw new Error();
+      byId('status').textContent = 'Lektion im Chat angefragt.';
+    } catch {
+      byId('status').textContent = `Schreibe im Chat „Starte Teamcoaching-Lektion ${lessonSelect.value}“.`;
+    } finally {
+      start.disabled = false;
+    }
+  });
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const insights = byId('insights').value.split('\n').map(line => line.trim()).filter(Boolean);
+    const nextStep = byId('next-step').value.trim();
+    if (!insights.length || insights.length > 3 || insights.some(line => line.length > 500) || !nextStep) {
+      byId('status').textContent = 'Gib bis zu drei kurze Erkenntnisse und einen nächsten Praxisschritt ein.';
+      return;
+    }
+    save.disabled = true;
+    byId('status').textContent = 'Speichert …';
+    try {
+      const result = await request('tools/call', {
+        name: 'save_summary', arguments: {
+          lessonId: draftLessonId, insights, openQuestion: byId('question').value.trim(), nextStep,
+        },
+      }, 60000);
+      if (result.isError || !result.structuredContent) throw new Error('Speichern fehlgeschlagen');
+      render(result);
+      form.hidden = true;
+      byId('status').textContent = 'Lerntag gespeichert.';
+    } catch {
+      byId('status').textContent = 'Speichern fehlgeschlagen. Dein Entwurf ist noch da. Bitte erneut versuchen.';
+    } finally {
+      save.disabled = false;
+    }
+  });
+
+  try {
+    await request('ui/initialize', {
+      appInfo: { name: 'learning-campus', version: '0.1.0' },
+      appCapabilities: {},
+      protocolVersion: '2026-01-26',
+    });
+    send({ method: 'ui/notifications/initialized' });
+  } catch {
+    byId('entries').textContent = 'Die Verbindung zur Kursansicht konnte nicht hergestellt werden.';
+  }
+</script>
+</html>
