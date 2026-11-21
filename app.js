@@ -222,10 +222,17 @@
       const userId=cloud.userId;
       const [entries,notes]=await Promise.all([cloud.entries(),cloud.notes()]);
       if(cloud.userId!==userId)return;
+      const previousLessons=new Set(cloudEntries.map(entry=>entry.lessonId));
+      const currentLessons=new Set(entries.map(entry=>entry.lessonId));
+      const progressChanged=previousLessons.size!==currentLessons.size||
+        [...currentLessons].some(id=>!previousLessons.has(id));
       cloudEntries=entries;
       cloudNotes=notes;
-      renderSidebar();
-      if(view.name==='daily')renderDailySummaries(entries);
+      if(progressChanged&&['catalog','course'].includes(view.name))render();
+      else{
+        renderSidebar();
+        if(view.name==='daily')renderDailySummaries(entries);
+      }
     }else{
       const entries=await loadServerJournal();
       if(view.name==='daily')renderDailySummaries(entries);
@@ -583,7 +590,9 @@ Stütze die Zusammenfassung auf unser Gespräch und erfinde keine persönlichen 
     event.target.value='';
   });
   const refreshJournal=()=>refreshDailySummaries().catch(()=>notify('Die Online-Zusammenfassungen konnten nicht geladen werden.'));
-  window.addEventListener('focus',()=>{if(view.name==='daily')void refreshJournal()});
+  window.addEventListener('focus',()=>{
+    if(window.learningCampusCloud?.userId||view.name==='daily')void refreshJournal();
+  });
   window.addEventListener('campus-cloud-change',()=>{
     cloudEntries=[];
     cloudNotes=[];
